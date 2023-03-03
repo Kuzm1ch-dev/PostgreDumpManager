@@ -2,6 +2,8 @@ package main
 
 import (
 	"PostgresDumpManager/src/common"
+	"PostgresDumpManager/src/sheduler"
+	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -18,15 +20,15 @@ var SelectedDB = -1
 var SelectedTask = -1
 
 func main() {
-	DataBases = common.Load()
-
+	sheduler := sheduler.NewSheduler("Europe/Moscow")
+	DataBases = common.Load(sheduler)
 	a := app.New()
 	w := a.NewWindow("Postgre Log in")
 	w.FullScreen()
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("PostgreSQL", PostgreDataTab(w)),
-		container.NewTabItem("Manager", DataBaseManager(w)),
+		container.NewTabItem("Manager", DataBaseManager(w, sheduler)),
 	)
 
 	w.SetContent(
@@ -79,7 +81,7 @@ func PostgreDataTab(w fyne.Window) fyne.CanvasObject {
 	return container
 }
 
-func DataBaseManager(w fyne.Window) fyne.CanvasObject {
+func DataBaseManager(w fyne.Window, sheduler sheduler.Sheduler) fyne.CanvasObject {
 	// List
 	DataBaseList := widget.NewList(
 		func() int {
@@ -95,23 +97,35 @@ func DataBaseManager(w fyne.Window) fyne.CanvasObject {
 
 	DataBaseEntry := widget.NewEntry()
 	DataBaseEntry.SetPlaceHolder("DataBase name")
-	AddDBButton := widget.NewButton("Добавить", func() {
+	AddDBButton := widget.NewButton("Add", func() {
 		DataBases = append(DataBases, common.DataBase{DataBaseEntry.Text, []common.Task{}})
 		DataBaseEntry.SetText("")
 		DataBaseList.Refresh()
-		common.Save(DataBases)
+		common.Save(DataBases, sheduler)
 	})
 
-	EditDBButton := widget.NewButton("Редактировать", func() {
+	EditDBButton := widget.NewButton("Edit", func() {
 		if SelectedDB >= 0 {
-			TaskManager(SelectedDB)
+			TaskManager(SelectedDB, sheduler)
 		}
+	})
+
+	RemoveDBButton := widget.NewButton("Remove", func() {
+		if SelectedDB >= 0 {
+			for _, task := range DataBases[SelectedDB].Tasks {
+				sheduler.RemoveTask(task.EntryID)
+			}
+			DataBases = append(DataBases[:SelectedDB], DataBases[SelectedDB+1:]...)
+		}
+		DataBaseList.Refresh()
+		common.Save(DataBases, sheduler)
 	})
 
 	DataBaseManageContainer := container.NewVBox(
 		DataBaseEntry,
 		AddDBButton,
 		EditDBButton,
+		RemoveDBButton,
 	)
 
 	DataBaseList.OnSelected = func(id widget.ListItemID) {
@@ -131,7 +145,7 @@ func DataBaseManager(w fyne.Window) fyne.CanvasObject {
 	return container
 }
 
-func TaskManager(SelectedDB int) {
+func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 	a := fyne.CurrentApp()
 	w := a.NewWindow(DataBases[SelectedDB].Name)
 
@@ -163,12 +177,13 @@ func TaskManager(SelectedDB int) {
 	TaskTime.Content.(*widget.Entry).PlaceHolder = "h:m:s"
 
 	TaskEntry := widget.NewEntry()
-	TaskEntry.SetPlaceHolder("Имя задачи")
+	TaskEntry.SetPlaceHolder("Task name")
 
 	RemoveTaskButton := widget.NewButton("Remove", func() {
+		sheduler.RemoveTask(DataBases[SelectedDB].Tasks[SelectedTask].EntryID)
 		DataBases[SelectedDB].Tasks = append(DataBases[SelectedDB].Tasks[:SelectedTask], DataBases[SelectedDB].Tasks[SelectedTask+1:]...)
 		TaskEntry.SetText("")
-		common.Save(DataBases)
+		common.Save(DataBases, sheduler)
 		TaskList.Refresh()
 	})
 
@@ -188,17 +203,16 @@ func TaskManager(SelectedDB int) {
 			dialog.ShowInformation("Information", "Incorrect time format", w)
 			return
 		}
-		err, s := common.CheckTime(time[2], "s")
-		if err != nil {
-			log.Println(err)
-			dialog.ShowInformation("Information", "Incorrect time format", w)
-			return
-		}
 		DataBases[SelectedDB].Tasks[SelectedTask].Time.H = h
 		DataBases[SelectedDB].Tasks[SelectedTask].Time.M = m
-		DataBases[SelectedDB].Tasks[SelectedTask].Time.S = s
 
-		common.Save(DataBases)
+		sheduler.RemoveTask(DataBases[SelectedDB].Tasks[SelectedTask].EntryID)
+		entryID, err := sheduler.AddTask(fmt.Sprintf("%d %d * * 0-6", m, h), func() { sheduler.CreateBackUpDataBase("Hello") })
+		if err != nil {
+			log.Println(err)
+		}
+		DataBases[SelectedDB].Tasks[SelectedTask].EntryID = entryID
+		common.Save(DataBases, sheduler)
 		TaskList.Refresh()
 	})
 
@@ -213,7 +227,11 @@ func TaskManager(SelectedDB int) {
 	)
 
 	AddTaskButton := widget.NewButton("Add", func() {
-		DataBases[SelectedDB].Tasks = append(DataBases[SelectedDB].Tasks, common.Task{TaskEntry.Text, "Backup", "Every day", common.Time{12, 0, 0}})
+		entryID, err := sheduler.AddTask("0 12 * * 0-6", func() { sheduler.CreateBackUpDataBase("Hello") })
+		if err != nil {
+			log.Println(err)
+		}
+		DataBases[SelectedDB].Tasks = append(DataBases[SelectedDB].Tasks, common.Task{TaskEntry.Text, "Backup", "Every day", common.Time{12, 0}, entryID})
 		TaskEntry.SetText("")
 		TaskList.Refresh()
 	})

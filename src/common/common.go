@@ -1,9 +1,11 @@
 package common
 
 import (
+	"PostgresDumpManager/src/sheduler"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/robfig/cron/v3"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,7 +20,6 @@ type DataBase struct {
 type Time struct {
 	H int
 	M int
-	S int
 }
 
 func Itoa(i int) string {
@@ -30,7 +31,7 @@ func Itoa(i int) string {
 }
 
 func (t Time) ToString() string {
-	return fmt.Sprintf("%s:%s:%s", Itoa(t.H), Itoa(t.M), Itoa(t.S))
+	return fmt.Sprintf("%s:%s", Itoa(t.H), Itoa(t.M))
 }
 
 func CheckTime(t string, p string) (error, int) {
@@ -46,7 +47,7 @@ func CheckTime(t string, p string) (error, int) {
 		if i > 23 {
 			return errors.New("More than 12"), 0
 		}
-	case "m", "s":
+	case "m":
 		if i > 60 {
 			return errors.New("More than 60"), 0
 		}
@@ -59,9 +60,10 @@ type Task struct {
 	TaskType string
 	Period   string
 	Time     Time
+	EntryID  cron.EntryID
 }
 
-func Save(data []DataBase) {
+func Save(data []DataBase, sheduler sheduler.Sheduler) {
 	json_data, err := json.Marshal(data)
 	if err != nil {
 		log.Println(err)
@@ -73,9 +75,11 @@ func Save(data []DataBase) {
 	}
 	log.Println("Config saved")
 	filename.Write(json_data)
+	sheduler.Cron.Stop()
+	go sheduler.Cron.Start()
 }
 
-func Load() []DataBase {
+func Load(sheduler sheduler.Sheduler) []DataBase {
 
 	data, err := ioutil.ReadFile("databases.json")
 	if err != nil {
@@ -85,6 +89,16 @@ func Load() []DataBase {
 	json.Unmarshal(data, &DataBasesFromFile)
 
 	log.Println(DataBasesFromFile)
+
+	for _, database := range DataBasesFromFile {
+		for _, task := range database.Tasks {
+			entryID, err := sheduler.AddTask(fmt.Sprintf("%d %d * * 0-6", task.Time.M, task.Time.H), func() { sheduler.CreateBackUpDataBase("Hello") })
+			if err != nil {
+				log.Println(err)
+			}
+			task.EntryID = entryID
+		}
+	}
 
 	return DataBasesFromFile
 }
