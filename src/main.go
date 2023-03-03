@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -19,10 +20,18 @@ var DataBases = []common.DataBase{}
 var SelectedDB = -1
 var SelectedTask = -1
 
+func makeTray(a fyne.App) {
+	if desk, ok := a.(desktop.App); ok {
+		menu := fyne.NewMenu("Hello World")
+		desk.SetSystemTrayMenu(menu)
+	}
+}
+
 func main() {
 	sheduler := sheduler.NewSheduler("Europe/Moscow")
 	DataBases = common.Load(sheduler)
 	a := app.New()
+	makeTray(a)
 	w := a.NewWindow("Postgre Log in")
 	w.FullScreen()
 
