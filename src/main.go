@@ -20,9 +20,12 @@ var DataBases = []common.DataBase{}
 var SelectedDB = -1
 var SelectedTask = -1
 
-func makeTray(a fyne.App) {
+func makeTray(a fyne.App, mainWindow fyne.Window) {
 	if desk, ok := a.(desktop.App); ok {
-		menu := fyne.NewMenu("Hello World")
+		menu := fyne.NewMenu("MyApp",
+			fyne.NewMenuItem("Show", func() {
+				mainWindow.Show()
+			}))
 		desk.SetSystemTrayMenu(menu)
 	}
 }
@@ -31,9 +34,11 @@ func main() {
 	sheduler := sheduler.NewSheduler("Europe/Moscow")
 	DataBases = common.Load(sheduler)
 	a := app.New()
-	makeTray(a)
 	w := a.NewWindow("Postgre Log in")
-	w.FullScreen()
+	w.SetCloseIntercept(func() {
+		w.Hide()
+	})
+	makeTray(a, w)
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("PostgreSQL", PostgreDataTab(w)),
