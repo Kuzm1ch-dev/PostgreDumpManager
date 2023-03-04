@@ -79,16 +79,20 @@ func Save(data []DataBase, sheduler sheduler.Sheduler) {
 	go sheduler.Cron.Start()
 }
 
-func Load(sheduler sheduler.Sheduler) []DataBase {
-
+func LoadDataBaseFromFile(sheduler sheduler.Sheduler) []DataBase {
 	data, err := ioutil.ReadFile("databases.json")
 	if err != nil {
 		log.Println(err)
+		file, err := os.Create("databases.json")
+		if err != nil {
+			fmt.Println("Unable to create file:", err)
+			os.Exit(1)
+		}
+		file.Close()
+		return []DataBase{}
 	}
 	var DataBasesFromFile []DataBase
 	json.Unmarshal(data, &DataBasesFromFile)
-
-	log.Println(DataBasesFromFile)
 
 	for _, database := range DataBasesFromFile {
 		for _, task := range database.Tasks {

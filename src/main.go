@@ -32,7 +32,7 @@ func makeTray(a fyne.App, mainWindow fyne.Window) {
 
 func main() {
 	sheduler := sheduler.NewSheduler("Europe/Moscow")
-	DataBases = common.Load(sheduler)
+	DataBases = common.LoadDataBaseFromFile(sheduler)
 	a := app.New()
 	w := a.NewWindow("Postgre Log in")
 	w.SetCloseIntercept(func() {
