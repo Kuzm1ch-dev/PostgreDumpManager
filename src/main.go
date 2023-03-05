@@ -16,7 +16,8 @@ import (
 	"strings"
 )
 
-var DataBases = []common.DataBase{}
+var DataBaseStorage = common.DataBaseStorage{}
+var Config = common.Config{}
 var SelectedDB = -1
 var SelectedTask = -1
 
@@ -32,7 +33,10 @@ func makeTray(a fyne.App, mainWindow fyne.Window) {
 
 func main() {
 	sheduler := sheduler.NewSheduler("Europe/Moscow")
-	DataBases = common.LoadDataBaseFromFile(sheduler)
+
+	DataBaseStorage.LoadDataBaseFromFile(sheduler)
+	Config.LoadConfigFromFile()
+
 	a := app.New()
 	w := a.NewWindow("Postgre Log in")
 	w.SetCloseIntercept(func() {
@@ -59,14 +63,30 @@ func PostgreDataTab(w fyne.Window) fyne.CanvasObject {
 
 	HostEntry := widget.NewEntry()
 	HostEntry.SetPlaceHolder("Host")
+	HostEntry.OnChanged = func(str string) {
+		Config.Host = str
+		Config.SaveConfigInFile()
+	}
 
 	UserEntry := widget.NewEntry()
 	UserEntry.SetPlaceHolder("User")
+	UserEntry.OnChanged = func(str string) {
+		Config.User = str
+		Config.SaveConfigInFile()
+	}
 
-	PasswordEntry := widget.NewEntry()
+	PasswordEntry := widget.NewPasswordEntry()
 	PasswordEntry.SetPlaceHolder("Password")
+	PasswordEntry.OnChanged = func(str string) {
+		Config.Password = str
+		Config.SaveConfigInFile()
+	}
 
 	PostgreBinDir := widget.NewEntry()
+	PostgreBinDir.OnChanged = func(str string) {
+		Config.PostgreBinDir = str
+		Config.SaveConfigInFile()
+	}
 	PostgreBinDir.SetPlaceHolder("PostgreSQL bin directory")
 	PostgreBinDir.Resize(fyne.Size{100, 32})
 
@@ -99,23 +119,23 @@ func DataBaseManager(w fyne.Window, sheduler sheduler.Sheduler) fyne.CanvasObjec
 	// List
 	DataBaseList := widget.NewList(
 		func() int {
-			return len(DataBases)
+			return len(DataBaseStorage.Storage)
 		},
 		func() fyne.CanvasObject {
 			return container.NewHBox(widget.NewIcon(theme.StorageIcon()), widget.NewLabel("Template Object"))
 		},
 		func(id widget.ListItemID, item fyne.CanvasObject) {
-			item.(*fyne.Container).Objects[1].(*widget.Label).SetText(DataBases[id].Name)
+			item.(*fyne.Container).Objects[1].(*widget.Label).SetText(DataBaseStorage.Storage[id].Name)
 		},
 	)
 
 	DataBaseEntry := widget.NewEntry()
 	DataBaseEntry.SetPlaceHolder("DataBase name")
 	AddDBButton := widget.NewButton("Add", func() {
-		DataBases = append(DataBases, common.DataBase{DataBaseEntry.Text, []common.Task{}})
+		DataBaseStorage.CreateDataBase(DataBaseEntry.Text)
+		DataBaseStorage.SaveDataBaseInFile(sheduler)
 		DataBaseEntry.SetText("")
 		DataBaseList.Refresh()
-		common.Save(DataBases, sheduler)
 	})
 
 	EditDBButton := widget.NewButton("Edit", func() {
@@ -126,13 +146,13 @@ func DataBaseManager(w fyne.Window, sheduler sheduler.Sheduler) fyne.CanvasObjec
 
 	RemoveDBButton := widget.NewButton("Remove", func() {
 		if SelectedDB >= 0 {
-			for _, task := range DataBases[SelectedDB].Tasks {
+			for _, task := range DataBaseStorage.Storage[SelectedDB].Tasks {
 				sheduler.RemoveTask(task.EntryID)
 			}
-			DataBases = append(DataBases[:SelectedDB], DataBases[SelectedDB+1:]...)
+			DataBaseStorage.RemoveDataBase(SelectedDB)
 		}
 		DataBaseList.Refresh()
-		common.Save(DataBases, sheduler)
+		DataBaseStorage.SaveDataBaseInFile(sheduler)
 	})
 
 	DataBaseManageContainer := container.NewVBox(
@@ -161,28 +181,29 @@ func DataBaseManager(w fyne.Window, sheduler sheduler.Sheduler) fyne.CanvasObjec
 
 func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 	a := fyne.CurrentApp()
-	w := a.NewWindow(DataBases[SelectedDB].Name)
+	database := DataBaseStorage.GetDataBase(SelectedDB)
+	w := a.NewWindow(database.Name)
 
 	TaskList := widget.NewList(
 		func() int {
-			return len(DataBases[SelectedDB].Tasks)
+			return len(database.Tasks)
 		},
 		func() fyne.CanvasObject {
 			return container.NewHBox(widget.NewIcon(theme.StorageIcon()), widget.NewLabel("Template Object"))
 		},
 		func(id widget.ListItemID, item fyne.CanvasObject) {
-			item.(*fyne.Container).Objects[1].(*widget.Label).SetText(DataBases[SelectedDB].Tasks[id].Name)
+			item.(*fyne.Container).Objects[1].(*widget.Label).SetText(database.Tasks[id].Name)
 		},
 	)
 
 	TaskType := widget.NewCard("Task type", "Select the task type",
 		widget.NewRadioGroup([]string{"Backup", "Reindex"}, func(s string) {
-			DataBases[SelectedDB].Tasks[SelectedTask].TaskType = s
+			database.Tasks[SelectedTask].TaskType = s
 		}))
 
 	TaskPeriod := widget.NewCard("Time", "How often to perform the task",
 		widget.NewRadioGroup([]string{"Every day", "Every week", "Every month"}, func(s string) {
-			DataBases[SelectedDB].Tasks[SelectedTask].Period = s
+			database.Tasks[SelectedTask].Period = s
 		}))
 
 	TaskTime := widget.NewCard("Repeat every", "",
@@ -194,10 +215,10 @@ func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 	TaskEntry.SetPlaceHolder("Task name")
 
 	RemoveTaskButton := widget.NewButton("Remove", func() {
-		sheduler.RemoveTask(DataBases[SelectedDB].Tasks[SelectedTask].EntryID)
-		DataBases[SelectedDB].Tasks = append(DataBases[SelectedDB].Tasks[:SelectedTask], DataBases[SelectedDB].Tasks[SelectedTask+1:]...)
+		sheduler.RemoveTask(database.Tasks[SelectedTask].EntryID)
+		database.RemoveTask(SelectedTask)
 		TaskEntry.SetText("")
-		common.Save(DataBases, sheduler)
+		DataBaseStorage.SaveDataBaseInFile(sheduler)
 		TaskList.Refresh()
 	})
 
@@ -217,16 +238,16 @@ func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 			dialog.ShowInformation("Information", "Incorrect time format", w)
 			return
 		}
-		DataBases[SelectedDB].Tasks[SelectedTask].Time.H = h
-		DataBases[SelectedDB].Tasks[SelectedTask].Time.M = m
+		database.Tasks[SelectedTask].Time.H = h
+		database.Tasks[SelectedTask].Time.M = m
 
-		sheduler.RemoveTask(DataBases[SelectedDB].Tasks[SelectedTask].EntryID)
+		sheduler.RemoveTask(database.Tasks[SelectedTask].EntryID)
 		entryID, err := sheduler.AddTask(fmt.Sprintf("%d %d * * 0-6", m, h), func() { sheduler.CreateBackUpDataBase("Hello") })
 		if err != nil {
 			log.Println(err)
 		}
-		DataBases[SelectedDB].Tasks[SelectedTask].EntryID = entryID
-		common.Save(DataBases, sheduler)
+		database.Tasks[SelectedTask].EntryID = entryID
+		DataBaseStorage.SaveDataBaseInFile(sheduler)
 		TaskList.Refresh()
 	})
 
@@ -245,7 +266,7 @@ func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 		if err != nil {
 			log.Println(err)
 		}
-		DataBases[SelectedDB].Tasks = append(DataBases[SelectedDB].Tasks, common.Task{TaskEntry.Text, "Backup", "Every day", common.Time{12, 0}, entryID})
+		database.CreateTask(TaskEntry.Text, entryID)
 		TaskEntry.SetText("")
 		TaskList.Refresh()
 	})
@@ -267,9 +288,9 @@ func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 
 	TaskList.OnSelected = func(id widget.ListItemID) {
 		SelectedTask = id
-		TaskType.Content.(*widget.RadioGroup).SetSelected(DataBases[SelectedDB].Tasks[SelectedTask].TaskType)
-		TaskPeriod.Content.(*widget.RadioGroup).SetSelected(DataBases[SelectedDB].Tasks[SelectedTask].Period)
-		TaskTime.Content.(*widget.Entry).SetText(DataBases[SelectedDB].Tasks[SelectedTask].Time.ToString())
+		TaskType.Content.(*widget.RadioGroup).SetSelected(database.Tasks[SelectedTask].TaskType)
+		TaskPeriod.Content.(*widget.RadioGroup).SetSelected(database.Tasks[SelectedTask].Period)
+		TaskTime.Content.(*widget.Entry).SetText(database.Tasks[SelectedTask].Time.ToString())
 	}
 
 	w.SetContent(

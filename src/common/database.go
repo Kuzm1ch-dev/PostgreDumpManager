@@ -12,9 +12,33 @@ import (
 	"strconv"
 )
 
+type DataBaseStorage struct {
+	Storage []DataBase
+}
+
+func (dbs *DataBaseStorage) CreateDataBase(name string) {
+	dbs.Storage = append(dbs.Storage, DataBase{name, []Task{}})
+}
+
+func (dbs *DataBaseStorage) RemoveDataBase(index int) {
+	dbs.Storage = append(dbs.Storage[:index], dbs.Storage[index+1:]...)
+}
+
+func (dbs *DataBaseStorage) GetDataBase(index int) *DataBase {
+	return &dbs.Storage[index]
+}
+
 type DataBase struct {
 	Name  string
 	Tasks []Task
+}
+
+func (db *DataBase) CreateTask(name string, entryID cron.EntryID) {
+	db.Tasks = append(db.Tasks, Task{name, "Backup", "Every day", Time{12, 0}, entryID})
+}
+
+func (db *DataBase) RemoveTask(index int) {
+	db.Tasks = append(db.Tasks[:index], db.Tasks[index+1:]...)
 }
 
 type Time struct {
@@ -63,8 +87,8 @@ type Task struct {
 	EntryID  cron.EntryID
 }
 
-func Save(data []DataBase, sheduler sheduler.Sheduler) {
-	json_data, err := json.Marshal(data)
+func (dbs *DataBaseStorage) SaveDataBaseInFile(sheduler sheduler.Sheduler) {
+	json_data, err := json.Marshal(dbs.Storage)
 	if err != nil {
 		log.Println(err)
 	}
@@ -79,7 +103,7 @@ func Save(data []DataBase, sheduler sheduler.Sheduler) {
 	go sheduler.Cron.Start()
 }
 
-func LoadDataBaseFromFile(sheduler sheduler.Sheduler) []DataBase {
+func (dbs *DataBaseStorage) LoadDataBaseFromFile(sheduler sheduler.Sheduler) {
 	data, err := ioutil.ReadFile("databases.json")
 	if err != nil {
 		log.Println(err)
@@ -89,7 +113,7 @@ func LoadDataBaseFromFile(sheduler sheduler.Sheduler) []DataBase {
 			os.Exit(1)
 		}
 		file.Close()
-		return []DataBase{}
+		return
 	}
 	var DataBasesFromFile []DataBase
 	json.Unmarshal(data, &DataBasesFromFile)
@@ -104,5 +128,5 @@ func LoadDataBaseFromFile(sheduler sheduler.Sheduler) []DataBase {
 		}
 	}
 
-	return DataBasesFromFile
+	dbs.Storage = DataBasesFromFile
 }
