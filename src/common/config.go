@@ -20,17 +20,18 @@ func (conf *Config) SaveConfigInFile() {
 	os.Setenv("PG_USER", conf.User)
 	os.Setenv("PG_PASS", conf.Password)
 	os.Setenv("PG_DIR", conf.PostgreBinDir)
+	log.Println(conf)
 	json_data, err := json.Marshal(conf)
 	if err != nil {
 		log.Println(err)
 	}
 	filename, err := os.Create("config.json")
-	defer filename.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("Config saved")
 	filename.Write(json_data)
+	filename.Close()
 }
 
 func (conf *Config) LoadConfigFromFile() {
@@ -48,4 +49,10 @@ func (conf *Config) LoadConfigFromFile() {
 	var config Config
 	json.Unmarshal(data, &config)
 	conf = &config
+	log.Println(conf)
+	os.Setenv("PG_HOST", conf.Host)
+	os.Setenv("PG_USER", conf.User)
+	os.Setenv("PG_PASS", conf.Password)
+	os.Setenv("PG_DIR", conf.PostgreBinDir)
+	log.Println("Config loaded")
 }

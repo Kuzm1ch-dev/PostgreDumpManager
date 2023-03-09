@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -62,31 +63,19 @@ func main() {
 func PostgreDataTab(w fyne.Window) fyne.CanvasObject {
 
 	HostEntry := widget.NewEntry()
+	HostEntry.SetText(os.Getenv("PG_HOST"))
 	HostEntry.SetPlaceHolder("Host")
-	HostEntry.OnChanged = func(str string) {
-		Config.Host = str
-		Config.SaveConfigInFile()
-	}
 
 	UserEntry := widget.NewEntry()
 	UserEntry.SetPlaceHolder("User")
-	UserEntry.OnChanged = func(str string) {
-		Config.User = str
-		Config.SaveConfigInFile()
-	}
+	UserEntry.SetText(os.Getenv("PG_USER"))
 
 	PasswordEntry := widget.NewPasswordEntry()
+	PasswordEntry.SetText(os.Getenv("PG_PASS"))
 	PasswordEntry.SetPlaceHolder("Password")
-	PasswordEntry.OnChanged = func(str string) {
-		Config.Password = str
-		Config.SaveConfigInFile()
-	}
 
 	PostgreBinDir := widget.NewEntry()
-	PostgreBinDir.OnChanged = func(str string) {
-		Config.PostgreBinDir = str
-		Config.SaveConfigInFile()
-	}
+	PostgreBinDir.SetText(os.Getenv("PG_DIR"))
 	PostgreBinDir.SetPlaceHolder("PostgreSQL bin directory")
 	PostgreBinDir.Resize(fyne.Size{100, 32})
 
@@ -104,12 +93,21 @@ func PostgreDataTab(w fyne.Window) fyne.CanvasObject {
 		}, w)
 	})
 
+	SaveConfig := widget.NewButton("Save Config", func() {
+		Config.Host = HostEntry.Text
+		Config.User = UserEntry.Text
+		Config.Password = PasswordEntry.Text
+		Config.PostgreBinDir = PostgreBinDir.Text
+		Config.SaveConfigInFile()
+	})
+
 	container := container.NewVBox(
 		HostEntry,
 		UserEntry,
 		PasswordEntry,
 		PostgreBinDir,
 		OpenFolder,
+		SaveConfig,
 	)
 
 	return container
@@ -242,7 +240,7 @@ func TaskManager(SelectedDB int, sheduler sheduler.Sheduler) {
 		database.Tasks[SelectedTask].Time.M = m
 
 		sheduler.RemoveTask(database.Tasks[SelectedTask].EntryID)
-		entryID, err := sheduler.AddTask(fmt.Sprintf("%d %d * * 0-6", m, h), func() { sheduler.CreateBackUpDataBase("Hello") })
+		entryID, err := sheduler.AddTask(fmt.Sprintf("%d %d * * 0-6", m, h), func() { sheduler.CreateBackUpDataBase(database.Name) })
 		if err != nil {
 			log.Println(err)
 		}
